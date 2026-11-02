@@ -1,0 +1,109 @@
+
+# ==========================================
+# Python generated files
+# ==========================================
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+*.egg
+*.egg-info/
+.eggs/
+build/
+dist/
+wheels/
+pip-wheel-metadata/
+share/python-wheels/
+
+# ==========================================
+# Virtual environments
+# ==========================================
+.venv/
+venv/
+env/
+ENV/
+
+# ==========================================
+# Environment variables / Secrets
+# ==========================================
+.env
+.env.*
+!.env.example
+!.env.sample
+
+# Secret and credential files
+secrets/
+credentials/
+*.pem
+*.key
+*.p12
+*.pfx
+service-account*.json
+*-credentials.json
+
+# ==========================================
+# Python tools / Testing
+# ==========================================
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+.tox/
+.nox/
+.coverage
+.coverage.*
+htmlcov/
+coverage.xml
+nosetests.xml
+test-results/
+.pyre/
+.pytype/
+
+# ==========================================
+# IDE / Editors
+# ==========================================
+.vscode/
+.idea/
+*.swp
+*.swo
+*.swn
+*~
+
+# ==========================================
+# Logs / Temporary files
+# ==========================================
+*.log
+logs/
+tmp/
+temp/
+*.tmp
+*.bak
+
+# ==========================================
+# Database files
+# ==========================================
+*.db
+*.sqlite
+*.sqlite3
+
+# ==========================================
+# OS generated files
+# ==========================================
+.DS_Store
+Thumbs.db
+Desktop.ini
+
+# ==========================================
+# Jupyter
+# ==========================================
+.ipynb_checkpoints/
+
+# ==========================================
+# Docker / Local overrides
+# ==========================================
+docker-compose.override.yml
+
+# ==========================================
+# Local uploads / generated media
+# ==========================================
+uploads/
+media/
