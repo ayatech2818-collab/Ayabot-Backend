@@ -10,6 +10,7 @@ class Settings(BaseSettings):
     debug: bool = True
     api_v1_prefix: str = "/api/v1"
     supabase_url: str
+    supabase_auth_key: str
     database_url: str | None = None
 
     model_config = SettingsConfigDict(
