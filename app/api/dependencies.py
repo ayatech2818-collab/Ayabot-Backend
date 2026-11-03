@@ -4,7 +4,7 @@ from uuid import UUID
 
 import jwt
 from fastapi import Depends, HTTPException, status
-from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
+from fastapi.security import OAuth2PasswordBearer
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
@@ -13,26 +13,20 @@ from app.db.dependencies import get_db
 from app.models.admin import AyabotAdmin
 
 
-bearer_scheme = HTTPBearer(auto_error=False)
+oauth2_scheme = OAuth2PasswordBearer(
+    tokenUrl="/api/v1/auth/token"
+)
 
 
 def get_current_admin(
-    credentials: Annotated[
-        HTTPAuthorizationCredentials | None,
-        Depends(bearer_scheme),
-    ],
+    token: Annotated[str, Depends(oauth2_scheme)],
     db: Annotated[Session, Depends(get_db)],
 ) -> AyabotAdmin:
-    if credentials is None:
-        raise HTTPException(
-            status_code=status.HTTP_401_UNAUTHORIZED,
-            detail="Authentication required",
-            headers={"WWW-Authenticate": "Bearer"},
-        )
 
     try:
-        claims = verify_supabase_access_token(credentials.credentials)
+        claims = verify_supabase_access_token(token)
         auth_user_id = UUID(claims["sub"])
+
     except (jwt.InvalidTokenError, ValueError, KeyError):
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,

@@ -5,6 +5,10 @@ from app.api.routes.auth import router as auth_router
 
 from app.core.config import get_settings
 
+from app.api.routes.products import router as products_router
+
+from app.api.routes.product_credentials import router as product_credentials_router
+
 settings = get_settings()
 
 app = FastAPI(
@@ -19,6 +23,16 @@ app.include_router(
     prefix=settings.api_v1_prefix,
 )
 
+app.include_router(
+    products_router,
+    prefix=settings.api_v1_prefix,
+)
+
+
+app.include_router(
+    product_credentials_router,
+    prefix=settings.api_v1_prefix,
+)
 
 
 @app.get("/health", tags=["Health"])
