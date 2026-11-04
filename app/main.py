@@ -9,6 +9,8 @@ from app.api.routes.products import router as products_router
 
 from app.api.routes.product_credentials import router as product_credentials_router
 
+from app.api.routes.product_api import router as product_api_router
+
 settings = get_settings()
 
 app = FastAPI(
@@ -34,6 +36,11 @@ app.include_router(
     prefix=settings.api_v1_prefix,
 )
 
+
+app.include_router(
+    product_api_router,
+    prefix=settings.api_v1_prefix,
+)
 
 @app.get("/health", tags=["Health"])
 async def health_check():
