@@ -123,3 +123,53 @@ def revoke_product_credential(
         raise
 
     return credential
+
+def authenticate_product_api_key(
+    db: Session,
+    api_key: str,
+):
+    # 1. Basic API key validation
+    if not api_key.startswith("ayb_") or len(api_key) > 200:
+        return None
+
+    # 2. Hash the incoming API key
+    key_hash = hash_api_key(api_key)
+
+    # 3. Find credential using its hash
+    credential = db.scalar(
+        select(AyabotProductCredential).where(
+            AyabotProductCredential.key_hash == key_hash
+        )
+    )
+
+    if credential is None:
+        return None
+
+    # 4. Check whether credential is active
+    if not credential.is_active or credential.revoked_at is not None:
+        return None
+
+    # 5. Check expiration
+    now = datetime.now(timezone.utc)
+
+    if credential.expires_at is not None:
+        expires_at = credential.expires_at
+
+        # Handle timezone-naive database timestamps
+        if expires_at.tzinfo is None:
+            expires_at = expires_at.replace(tzinfo=timezone.utc)
+
+        if expires_at <= now:
+            return None
+
+    # 6. Get associated product
+    product = db.get(AyabotProduct, credential.product_id)
+
+    if product is None or not product.is_active:
+        return None
+
+    # 7. Return authenticated credential and product
+    return {
+        "credential": credential,
+        "product": product,
+    }
