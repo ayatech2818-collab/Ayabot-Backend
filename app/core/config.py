@@ -11,6 +11,8 @@ class Settings(BaseSettings):
     api_v1_prefix: str = "/api/v1"
     supabase_url: str
     supabase_auth_key: str
+    supabase_service_role_key: str
+    gemini_api_key: str
     database_url: str | None = None
 
     model_config = SettingsConfigDict(
