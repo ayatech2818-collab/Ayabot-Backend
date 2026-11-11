@@ -13,6 +13,8 @@ from app.api.routes.product_api import router as product_api_router
 
 from app.api.routes.knowledge import router as knowledge_router
 
+from app.api.routes.voice import router as voice_router
+
 settings = get_settings()
 
 app = FastAPI(
@@ -48,6 +50,8 @@ app.include_router(
     knowledge_router,
     prefix=settings.api_v1_prefix,
 )
+
+app.include_router(voice_router, prefix=settings.api_v1_prefix)
 
 @app.get("/health", tags=["Health"])
 async def health_check():

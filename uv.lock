@@ -80,6 +80,7 @@ dependencies = [
     { name = "python-multipart" },
     { name = "sqlalchemy" },
     { name = "supabase" },
+    { name = "websockets" },
 ]
 
 [package.metadata]
@@ -98,6 +99,7 @@ requires-dist = [
     { name = "python-multipart", specifier = ">=0.0.32" },
     { name = "sqlalchemy", specifier = ">=2.0" },
     { name = "supabase", specifier = ">=2.34.0" },
+    { name = "websockets", specifier = ">=15.0.1" },
 ]
 
 [[package]]

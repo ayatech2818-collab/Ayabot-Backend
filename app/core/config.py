@@ -15,6 +15,16 @@ class Settings(BaseSettings):
     gemini_api_key: str
     database_url: str | None = None
 
+    # Gemini Live
+    gemini_live_model: str = "gemini-2.5-flash-native-audio-preview-09-2025"
+
+    # Gemini Text Generation
+    gemini_text_model: str = "gemini-3.8-flash"
+
+    # Voice session authentication
+    voice_session_secret: str
+    voice_session_ttl_seconds: int = 60
+
     model_config = SettingsConfigDict(
         env_file=".env",
         env_file_encoding="utf-8",

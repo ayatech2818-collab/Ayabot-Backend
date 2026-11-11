@@ -71,6 +71,11 @@ class AyabotKnowledgeDocument(Base):
         nullable=True,
     )
 
+    previous_file_path: Mapped[str | None] = mapped_column(
+        Text,
+        nullable=True,
+    )
+
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True),
         nullable=False,

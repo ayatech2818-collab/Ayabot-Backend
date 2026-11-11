@@ -111,6 +111,23 @@ def process_knowledge_document(document_id: UUID) -> None:
 
         db.commit()
 
+        # Delete previous file only after successful processing
+        if document.previous_file_path:
+            try:
+                from app.services.storage_service import delete_knowledge_file
+
+                delete_knowledge_file(document.previous_file_path)
+
+                document.previous_file_path = None
+                db.commit()
+
+                print("[SUCCESS] Previous document file deleted")
+
+            except Exception as cleanup_exc:
+                print(
+                    f"[WARNING] Could not delete previous file: {cleanup_exc}"
+                )
+
         print(f"[SUCCESS] Saved {len(chunk_records)} chunks")
         print("[SUCCESS] Document processing completed!")
 
