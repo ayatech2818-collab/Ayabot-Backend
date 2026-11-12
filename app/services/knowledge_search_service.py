@@ -3,22 +3,67 @@ from sqlalchemy import text, bindparam
 from sqlalchemy.orm import Session
 from pgvector.sqlalchemy import Vector
 from uuid import UUID
+import re
 
 from app.services.embedding_service import generate_embedding
+
+
+
+def remove_redundant_chunks(
+    chunks: list[dict],
+    overlap_threshold: float = 0.90,
+) -> list[dict]:
+    """
+    Remove chunks that are almost entirely duplicated.
+
+    Keeps the higher-similarity chunk when substantial
+    textual duplication is detected.
+    """
+
+    def normalize(content: str) -> set[str]:
+        content = content.lower()
+        content = re.sub(r"\s+", " ", content)
+        return set(re.findall(r"\b\w+\b", content))
+
+    selected: list[dict] = []
+    selected_words: list[set[str]] = []
+
+    for chunk in chunks:
+        words = normalize(chunk.get("content", ""))
+
+        if not words:
+            continue
+
+        duplicate = False
+
+        for existing_words in selected_words:
+            overlap = len(words & existing_words) / len(words | existing_words)
+
+            if overlap >= overlap_threshold:
+                duplicate = True
+                break
+
+        if not duplicate:
+            selected.append(chunk)
+            selected_words.append(words)
+
+    return selected
+
 
 
 def search_knowledge(
     db: Session,
     question: str,
     product_id: UUID,
-    limit: int = 5,
+    limit: int = 10,
+    candidate_limit: int = 20,
     min_similarity: float = 0.50,
 ) -> list[dict]:
 
-    # 1. Convert the question into a 768-dimensional embedding
+    # 1. Generate question embedding
     query_embedding = generate_embedding(question)
 
-    # 2. Call our PostgreSQL similarity-search function
+    # 2. Retrieve candidate chunks from PostgreSQL
     query = text("""
         SELECT
             chunks.*,
@@ -27,12 +72,12 @@ def search_knowledge(
         FROM public.search_knowledge_chunks(
             :query_embedding,
             :match_product_id,
-            :match_count
+            :candidate_count
         ) AS chunks
         JOIN public.ayabot_knowledge_documents AS documents
             ON documents.id = chunks.document_id
-        AND documents.product_id = :match_product_id
-        WHERE chunks.similarity >= :min_similarity
+           AND documents.product_id = :match_product_id
+        ORDER BY chunks.similarity DESC
     """).bindparams(
         bindparam("query_embedding", type_=Vector(768))
     )
@@ -40,19 +85,27 @@ def search_knowledge(
     result = db.execute(
         query,
         {
-            "min_similarity": min_similarity,
             "query_embedding": query_embedding,
             "match_product_id": product_id,
-            "match_count": limit,
+            "candidate_count": candidate_limit,
         },
     )
 
-    rows = result.mappings().all()
+    rows = [dict(row) for row in result.mappings().all()]
 
-    if rows:
-        print("Knowledge result fields:", list(rows[0].keys()))
+    filtered_rows = [
+        row for row in rows
+        if row["similarity"] >= min_similarity
+    ]
 
-    return [dict(row) for row in rows]
+    deduplicated_rows = remove_redundant_chunks(filtered_rows)
 
-    # 3. Return matching chunks
-    # return [dict(row) for row in result.mappings().all()]
+    final_results = deduplicated_rows[:limit]
+
+    print(
+        f"[RAG] Candidates retrieved: {len(rows)}, "
+        f"Above threshold: {len(filtered_rows)}, "
+        f"After deduplication: {len(deduplicated_rows)}, "
+        f"Final results: {len(final_results)}"
+    )
+    return final_results

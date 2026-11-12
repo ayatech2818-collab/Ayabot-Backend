@@ -29,6 +29,9 @@ from app.services.storage_service import (
     upload_knowledge_file,
     delete_knowledge_file,
 )
+from app.services.knowledge_reprocess_service import (
+    prepare_document_for_reprocessing,
+)
 
 router = APIRouter(prefix="/knowledge", tags=["Knowledge Management"])
 
@@ -385,6 +388,49 @@ def retry_knowledge_document(
     return document
 
 
+
+@router.post(
+    "/documents/{document_id}/reprocess",
+    response_model=KnowledgeDocumentResponse,
+)
+def reprocess_knowledge_document(
+    document_id: UUID,
+    background_tasks: BackgroundTasks,
+    db: Session = Depends(get_db),
+    admin=Depends(get_current_admin),
+):
+    try:
+        document = prepare_document_for_reprocessing(
+            db=db,
+            document_id=document_id,
+        )
+
+    except LookupError as exc:
+        raise HTTPException(
+            status_code=404,
+            detail=str(exc),
+        ) from exc
+
+    except RuntimeError as exc:
+        raise HTTPException(
+            status_code=409,
+            detail=str(exc),
+        ) from exc
+
+    except Exception as exc:
+        raise HTTPException(
+            status_code=500,
+            detail="Failed to prepare document for reprocessing",
+        ) from exc
+
+    background_tasks.add_task(
+        process_knowledge_document,
+        document.id,
+    )
+
+    return document
+
+
 @router.delete("/documents/{document_id}")
 def delete_knowledge_document(
     document_id: UUID,
@@ -438,6 +484,7 @@ def search_product_knowledge(
         question=payload.question,
         product_id=product.product.id,
         limit=10,
+        candidate_limit=20,
         min_similarity=0.50,
     )
 
@@ -471,6 +518,7 @@ def answer_product_question(
         question=payload.question,
         product_id=product.product.id,
         limit=10,
+        candidate_limit=20,
         min_similarity=0.50,
     )
 

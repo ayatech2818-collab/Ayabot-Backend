@@ -1,4 +1,7 @@
 
+import re
+
+
 def split_text(
     text: str,
     chunk_size: int = 1000,
@@ -17,13 +20,99 @@ def split_text(
         return []
 
     paragraphs = [
-        p.strip()
-        for p in text.splitlines()
-        if p.strip()
+        paragraph.strip()
+        for paragraph in text.splitlines()
+        if paragraph.strip()
     ]
 
-    chunks = []
+    chunks: list[str] = []
     current = ""
+
+    
+    def split_long_text(value: str) -> list[str]:
+        """Split oversized text at sentence/word boundaries with overlap."""
+
+        target_size = chunk_size - overlap
+        sentences = re.split(r"(?<=[.!?])\s+", value.strip())
+
+        base_chunks: list[str] = []
+        buffer = ""
+
+        for sentence in sentences:
+            if len(sentence) > target_size:
+                if buffer:
+                    base_chunks.append(buffer)
+                    buffer = ""
+
+                words = sentence.split()
+                word_buffer = ""
+
+                for word in words:
+                    candidate = (
+                        f"{word_buffer} {word}"
+                        if word_buffer
+                        else word
+                    )
+
+                    if len(candidate) <= target_size:
+                        word_buffer = candidate
+                    else:
+                        if word_buffer:
+                            base_chunks.append(word_buffer)
+                        word_buffer = word
+
+                if word_buffer:
+                    base_chunks.append(word_buffer)
+
+                continue
+
+            candidate = (
+                f"{buffer} {sentence}"
+                if buffer
+                else sentence
+            )
+
+            if len(candidate) <= target_size:
+                buffer = candidate
+            else:
+                if buffer:
+                    base_chunks.append(buffer)
+                buffer = sentence
+
+        if buffer:
+            base_chunks.append(buffer)
+
+        if not overlap or len(base_chunks) <= 1:
+            return base_chunks
+
+        result = [base_chunks[0]]
+
+        for index in range(1, len(base_chunks)):
+            previous = base_chunks[index - 1]
+            prefix = previous[-overlap:]
+
+            boundary = prefix.find(" ")
+            if boundary != -1:
+                prefix = prefix[boundary + 1:]
+
+            result.append(f"{prefix} {base_chunks[index]}")
+
+        return result
+
+
+    def get_overlap(value: str) -> str:
+        if not overlap or len(value) <= overlap:
+            return value
+
+        result = value[-overlap:]
+
+        # Start at a word boundary.
+        first_space = result.find(" ")
+
+        if first_space != -1:
+            result = result[first_space + 1:]
+
+        return result
 
     for paragraph in paragraphs:
 
@@ -32,36 +121,16 @@ def split_text(
                 chunks.append(current)
                 current = ""
 
-            start = 0
+            pieces = split_long_text(paragraph)
 
-            while start < len(paragraph):
-                end = min(start + chunk_size, len(paragraph))
+            for piece in pieces:
+                if current and len(current) + len(piece) + 1 <= chunk_size:
+                    current = f"{current}\n{piece}"
+                else:
+                    if current:
+                        chunks.append(current)
 
-                if end < len(paragraph):
-                    boundary = paragraph.rfind(" ", start, end)
-
-                    if boundary > start:
-                        end = boundary
-
-                piece = paragraph[start:end].strip()
-
-                if piece:
-                    chunks.append(piece)
-
-                start = end
-
-                if start < len(paragraph):
-                    start = max(
-                        start - overlap,
-                        0,
-                    )
-
-                    # Move backwards to a word boundary.
-                    while start > 0 and paragraph[start] != " ":
-                        start -= 1
-
-                    if start == 0:
-                        start = end
+                    current = piece
 
             continue
 
@@ -73,25 +142,16 @@ def split_text(
 
         if len(candidate) <= chunk_size:
             current = candidate
-
         else:
             if current:
                 chunks.append(current)
 
-            overlap_text = ""
-
-            if overlap:
-                overlap_text = current[-overlap:]
-
-                # Avoid starting the next chunk in the middle of a word.
-                if len(current) > overlap:
-                    boundary = overlap_text.find(" ")
-                    if boundary != -1:
-                        overlap_text = overlap_text[boundary + 1:]
+            overlap_text = get_overlap(current)
 
             current = (
                 f"{overlap_text}\n{paragraph}"
                 if overlap_text
+                and len(overlap_text) + len(paragraph) + 1 <= chunk_size
                 else paragraph
             )
 
