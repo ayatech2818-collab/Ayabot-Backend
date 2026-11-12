@@ -1,0 +1,36 @@
+
+# Environment secrets
+.env
+.env.*
+!.env.example
+
+# Local Python environment
+.venv/
+venv/
+__pycache__/
+*.py[cod]
+
+# Git
+.git/
+.gitignore
+
+# Test files
+test_*.py
+.pytest_cache/
+.coverage
+
+# IDE and editor
+.vscode/
+.idea/
+
+# OS files
+.DS_Store
+Thumbs.db
+
+# Build artifacts
+dist/
+build/
+*.egg-info/
+
+# Logs
+*.log
