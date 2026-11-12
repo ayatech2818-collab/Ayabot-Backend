@@ -6,6 +6,7 @@ from app.models.scope import AyabotScope
 from app.models.product_credential_scope import AyabotProductCredentialScope
 from app.models.knowledge_document import AyabotKnowledgeDocument
 from app.models.knowledge_chunk import AyabotKnowledgeChunk
+from app.models.voice_session_ticket import AyabotVoiceSessionTicket
 
 
 __all__ = [
@@ -16,4 +17,5 @@ __all__ = [
     "AyabotProductCredentialScope",
     "AyabotKnowledgeDocument",
     "AyabotKnowledgeChunk",
+    "AyabotVoiceSessionTicket",
 ]
