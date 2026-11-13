@@ -35,6 +35,17 @@ jobs:
         run: uv sync --frozen --no-dev
 
       - name: Verify application imports
+        env:
+          APP_NAME: AYABOT CI
+          APP_ENV: development
+          DEBUG: "false"
+          API_V1_PREFIX: /api/v1
+          SUPABASE_URL: https://example.supabase.co
+          SUPABASE_AUTH_KEY: ci-dummy-auth-key
+          SUPABASE_SERVICE_ROLE_KEY: ci-dummy-service-role-key
+          GEMINI_API_KEY: ci-dummy-gemini-key
+          VOICE_SESSION_SECRET: ci-dummy-voice-session-secret-for-validation
+          DATABASE_URL: postgresql+psycopg://ci:ci@localhost:5432/ci
         run: uv run python -c "from app.main import app; print('AYABOT application import successful')"
 
       - name: Build Docker image
