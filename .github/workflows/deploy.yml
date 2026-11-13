@@ -1,0 +1,99 @@
+
+name: AYABOT CI/CD
+
+on:
+  pull_request:
+    branches:
+      - main
+  push:
+    branches:
+      - main
+
+permissions:
+  contents: read
+
+jobs:
+  validate:
+    name: Validate and Build Docker Image
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout source
+        uses: actions/checkout@v4
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@v5
+        with:
+          enable-cache: true
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Install dependencies
+        run: uv sync --frozen --no-dev
+
+      - name: Verify application imports
+        run: uv run python -c "from app.main import app; print('AYABOT application import successful')"
+
+      - name: Build Docker image
+        run: docker build -t ayabot-backend:${{ github.sha }} .
+
+  deploy:
+    name: Push and Deploy Production
+    needs: validate
+    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+    runs-on: ubuntu-latest
+
+    permissions:
+      contents: read
+      id-token: write
+
+    steps:
+      - name: Checkout source
+        uses: actions/checkout@v4
+
+      - name: Authenticate with Docker Hub
+        uses: docker/login-action@v3
+        with:
+          username: ${{ secrets.DOCKERHUB_USERNAME }}
+          password: ${{ secrets.DOCKERHUB_TOKEN }}
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Build and push Docker image
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          push: true
+          tags: |
+            ayatech2818/ayabot-backend:${{ github.sha }}
+            ayatech2818/ayabot-backend:latest
+
+      - name: Authenticate to Google Cloud
+        uses: google-github-actions/auth@v3
+        with:
+          workload_identity_provider: ${{ vars.GCP_WORKLOAD_IDENTITY_PROVIDER }}
+          service_account: ${{ vars.GCP_SERVICE_ACCOUNT }}
+
+      - name: Set up Google Cloud CLI
+        uses: google-github-actions/setup-gcloud@v3
+
+      - name: Deploy to Cloud Run
+        run: |
+          gcloud run deploy ayabot-backend \
+            --project=ayabot-production \
+            --region=asia-southeast1 \
+            --image=docker.io/ayatech2818/ayabot-backend:${{ github.sha }} \
+            --platform=managed \
+            --allow-unauthenticated \
+            --service-account=500640656111-compute@developer.gserviceaccount.com \
+            --port=8080 \
+            --memory=1Gi \
+            --cpu=1 \
+            --concurrency=20 \
+            --timeout=3600 \
+            --set-env-vars="APP_NAME=AYABOT API,APP_ENV=production,DEBUG=false,API_V1_PREFIX=/api/v1,SUPABASE_URL=https://knnicavesaajeobihidz.supabase.co,VOICE_SESSION_TTL_SECONDS=60,GEMINI_LIVE_MODEL=gemini-2.5-flash-native-audio-preview-09-2025,GEMINI_TEXT_MODEL=gemini-3.5-flash-lite" \
+            --set-secrets="DATABASE_URL=DATABASE_URL:latest,SUPABASE_AUTH_KEY=SUPABASE_AUTH_KEY:latest,SUPABASE_SERVICE_ROLE_KEY=SUPABASE_SERVICE_ROLE_KEY:latest,GEMINI_API_KEY=GEMINI_API_KEY:latest,VOICE_SESSION_SECRET=VOICE_SESSION_SECRET:latest"
