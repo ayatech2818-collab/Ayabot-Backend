@@ -97,7 +97,7 @@ jobs:
           gcloud run deploy ayabot-backend \
             --project=ayabot-production \
             --region=asia-southeast1 \
-            --image=docker.io/ayatech2818/ayabot-backend:${{ github.sha }} \
+            --image=docker.io/ayatech2818/ayabot-backend:latest \
             --platform=managed \
             --allow-unauthenticated \
             --service-account=500640656111-compute@developer.gserviceaccount.com \
