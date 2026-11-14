@@ -25,6 +25,18 @@ class Settings(BaseSettings):
     voice_session_secret: str
     voice_session_ttl_seconds: int = 60
 
+    # Voice WebSocket lifecycle and protocol limits
+    voice_auth_timeout_seconds: int = 10
+    voice_session_idle_timeout_seconds: int = 120
+    voice_session_max_duration_seconds: int = 1800
+    voice_tool_timeout_seconds: int = 8
+    voice_max_ticket_chars: int = 200
+    voice_max_text_chars: int = 4096
+    voice_max_audio_bytes: int = 32768
+    voice_input_queue_max_messages: int = 50
+    voice_output_queue_max_messages: int = 100
+    voice_audio_activity_rms_threshold: int = 200
+
     model_config = SettingsConfigDict(
         env_file=".env",
         env_file_encoding="utf-8",

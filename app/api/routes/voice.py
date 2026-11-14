@@ -1,28 +1,44 @@
 
 import asyncio
-import base64
-import binascii
 import logging
 from typing import Annotated
 from uuid import UUID
 
-from fastapi import APIRouter, Depends, WebSocket, WebSocketDisconnect, status
-from google.genai import types
+from fastapi import (
+    APIRouter,
+    Depends,
+    HTTPException,
+    WebSocket,
+    WebSocketDisconnect,
+    status,
+)
 from sqlalchemy.orm import Session
 
 from app.api.dependencies import ProductAuthContext, get_current_product
 from app.db.dependencies import get_db
 from app.db.session import SessionLocal
+from app.models import AyabotVoiceConfig
+from app.core.config import get_settings
+from app.schemas.voice import (
+    VoiceAuthMessage,
+    VoiceMessageValidationError,
+    error_message,
+    parse_voice_message,
+)
+from app.services.voice_connection_service import (
+    VoiceConnectionError,
+    run_voice_connection,
+)
 from app.services.voice_session_service import (
     create_voice_session_ticket,
     consume_voice_session_ticket,
 )
 from app.services.gemini_live_service import (
     connect_gemini_live,
-    handle_gemini_tool_call,
 )
 
 logger = logging.getLogger(__name__)
+settings = get_settings()
 
 router = APIRouter(
     prefix="/voice",
@@ -41,6 +57,18 @@ def create_voice_session(
     ],
     db: Annotated[Session, Depends(get_db)],
 ):
+    voice_config = (
+        db.query(AyabotVoiceConfig)
+        .filter(AyabotVoiceConfig.config_key == "global")
+        .one_or_none()
+    )
+
+    if voice_config is None or not voice_config.is_enabled:
+        raise HTTPException(
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+            detail="AYABOT voice service is currently unavailable.",
+        )
+
     return create_voice_session_ticket(
         db=db,
         product_id=ctx.product.id,
@@ -60,30 +88,60 @@ def validate_voice_ticket(raw_ticket: str):
         db.close()
 
 
+async def close_voice_websocket(
+    websocket: WebSocket,
+    error: VoiceConnectionError,
+) -> None:
+    try:
+        await websocket.send_json(
+            error_message(
+                error.message,
+                code=error.code,
+                recoverable=error.recoverable,
+            )
+        )
+        await websocket.close(
+            code=error.close_code,
+            reason=error.message,
+        )
+    except Exception:
+        pass
+
+
 @router.websocket("/ws")
 async def voice_websocket(websocket: WebSocket):
     await websocket.accept()
 
     try:
-        auth_message = await asyncio.wait_for(
-            websocket.receive_json(),
-            timeout=10,
-        )
+        # Step 1: Authenticate the WebSocket connection.
+        try:
+            auth_message = parse_voice_message(
+                await asyncio.wait_for(
+                    websocket.receive_json(),
+                    timeout=settings.voice_auth_timeout_seconds,
+                )
+            )
+        except VoiceMessageValidationError:
+            await websocket.close(
+                code=1008,
+                reason="Invalid authentication message",
+            )
+            return
 
-        if auth_message.get("type") != "auth":
+        if not isinstance(auth_message, VoiceAuthMessage):
             await websocket.close(
                 code=1008,
                 reason="Authentication required",
             )
             return
 
-        raw_ticket = auth_message.get("ticket")
+        raw_ticket = auth_message.ticket
 
-        if not isinstance(raw_ticket, str) or not raw_ticket:
-            await websocket.close(
-                code=1008,
-                reason="Invalid ticket",
-            )
+        if (
+            not raw_ticket
+            or len(raw_ticket) > settings.voice_max_ticket_chars
+        ):
+            await websocket.close(code=1008, reason="Invalid ticket")
             return
 
         try:
@@ -93,6 +151,7 @@ async def voice_websocket(websocket: WebSocket):
             )
         except Exception:
             logger.warning("Voice ticket validation failed")
+
             await websocket.close(
                 code=1008,
                 reason="Invalid or expired ticket",
@@ -101,133 +160,29 @@ async def voice_websocket(websocket: WebSocket):
 
         product_id: UUID = ticket.product_id
 
-        await websocket.send_json({"type": "connecting"})
+        await websocket.send_json({
+            "type": "connecting",
+        })
 
+        # Step 2: Establish the Gemini Live session.
         async with connect_gemini_live() as session:
-            await websocket.send_json({"type": "ready"})
+            await run_voice_connection(
+                websocket=websocket,
+                session=session,
+                product_id=product_id,
+            )
 
-            async def receive_from_browser():
-                while True:
-                    message = await websocket.receive_json()
-                    message_type = message.get("type")
-
-                    if message_type == "audio":
-                        encoded_audio = message.get("data")
-
-                        if not isinstance(encoded_audio, str):
-                            continue
-
-                        try:
-                            audio_bytes = base64.b64decode(
-                                encoded_audio,
-                                validate=True,
-                            )
-                        except (ValueError, binascii.Error):
-                            continue
-
-                        await session.send_realtime_input(
-                            audio=types.Blob(
-                                data=audio_bytes,
-                                mime_type="audio/pcm;rate=16000",
-                            )
-                        )
-
-                    elif message_type == "text":
-                        text = message.get("text", "")
-
-                        if isinstance(text, str) and text.strip():
-                            await session.send_client_content(
-                                turns=types.Content(
-                                    role="user",
-                                    parts=[types.Part(text=text)],
-                                ),
-                                turn_complete=True,
-                            )
-
-                    elif message_type == "end":
-                        return
-
-            async def receive_from_gemini():
-                async for response in session.receive():
-
-                    if response.tool_call:
-                        await handle_gemini_tool_call(
-                            session=session,
-                            tool_call=response.tool_call,
-                            product_id=product_id,
-                        )
-                        continue
-
-                    server_content = response.server_content
-
-                    if not server_content:
-                        continue
-
-                    if server_content.input_transcription:
-                        await websocket.send_json({
-                            "type": "input_transcription",
-                            "text": server_content.input_transcription.text,
-                        })
-
-                    if server_content.output_transcription:
-                        await websocket.send_json({
-                            "type": "output_transcription",
-                            "text": server_content.output_transcription.text,
-                        })
-
-                    if server_content.model_turn:
-                        for part in server_content.model_turn.parts:
-                            if part.inline_data and part.inline_data.data:
-                                audio_data = base64.b64encode(
-                                    part.inline_data.data
-                                ).decode("ascii")
-
-                                await websocket.send_json({
-                                    "type": "audio",
-                                    "data": audio_data,
-                                    "mimeType": "audio/pcm;rate=24000",
-                                })
-
-                    if server_content.interrupted:
-                        await websocket.send_json({
-                            "type": "interrupted",
-                        })
-
-                    if server_content.turn_complete:
-                        await websocket.send_json({
-                            "type": "turn_complete",
-                        })
-
-            browser_task = asyncio.create_task(receive_from_browser())
-            gemini_task = asyncio.create_task(receive_from_gemini())
-
-            try:
-                done, pending = await asyncio.wait(
-                    [browser_task, gemini_task],
-                    return_when=asyncio.FIRST_COMPLETED,
-                )
-
-                for task in done:
-                    exception = task.exception()
-                    if exception:
-                        raise exception
-
-            finally:
-                for task in (browser_task, gemini_task):
-                    if not task.done():
-                        task.cancel()
-
-                await asyncio.gather(
-                    browser_task,
-                    gemini_task,
-                    return_exceptions=True,
-                )
+        logger.info(
+            "Voice session ended by client: product_id=%s",
+            product_id,
+        )
 
     except WebSocketDisconnect:
         logger.info("Voice client disconnected")
 
     except asyncio.TimeoutError:
         logger.warning("Voice authentication timed out")
+
         try:
             await websocket.close(
                 code=1008,
@@ -236,13 +191,26 @@ async def voice_websocket(websocket: WebSocket):
         except Exception:
             pass
 
+    except VoiceConnectionError as exc:
+        logger.info(
+            "Voice connection ended: code=%s recoverable=%s",
+            exc.code,
+            exc.recoverable,
+        )
+        await close_voice_websocket(websocket, exc)
+
     except Exception:
         logger.exception("Voice WebSocket error")
+
         try:
-            await websocket.send_json({
-                "type": "error",
-                "message": "Voice connection encountered an error.",
-            })
-            await websocket.close(code=1011)
+            await close_voice_websocket(
+                websocket,
+                VoiceConnectionError(
+                    code="internal_error",
+                    message="Voice connection encountered an error.",
+                    recoverable=True,
+                    close_code=1011,
+                ),
+            )
         except Exception:
             pass
