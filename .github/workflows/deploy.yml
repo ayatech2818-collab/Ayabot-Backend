@@ -75,6 +75,7 @@ jobs:
         uses: docker/setup-buildx-action@v3
 
       - name: Build and push Docker image
+        id: build
         uses: docker/build-push-action@v6
         with:
           context: .
@@ -82,6 +83,11 @@ jobs:
           tags: |
             ayatech2818/ayabot-backend:${{ github.sha }}
             ayatech2818/ayabot-backend:latest
+
+      - name: Show image digest
+        run: |
+          echo "Commit: ${{ github.sha }}"
+          echo "Image: docker.io/ayatech2818/ayabot-backend@${{ steps.build.outputs.digest }}"
 
       - name: Authenticate to Google Cloud
         uses: google-github-actions/auth@v3
@@ -97,7 +103,7 @@ jobs:
           gcloud run deploy ayabot-backend \
             --project=ayabot-production \
             --region=asia-southeast1 \
-            --image=docker.io/ayatech2818/ayabot-backend:latest \
+            --image=docker.io/ayatech2818/ayabot-backend@${{ steps.build.outputs.digest }} \
             --platform=managed \
             --allow-unauthenticated \
             --service-account=500640656111-compute@developer.gserviceaccount.com \
@@ -108,3 +114,10 @@ jobs:
             --timeout=3600 \
             --set-env-vars="APP_NAME=AYABOT API,APP_ENV=production,DEBUG=false,API_V1_PREFIX=/api/v1,SUPABASE_URL=https://knnicavesaajeobihidz.supabase.co,VOICE_SESSION_TTL_SECONDS=60,GEMINI_LIVE_MODEL=gemini-2.5-flash-native-audio-preview-09-2025,GEMINI_TEXT_MODEL=gemini-3.5-flash-lite" \
             --set-secrets="DATABASE_URL=DATABASE_URL:latest,SUPABASE_AUTH_KEY=SUPABASE_AUTH_KEY:latest,SUPABASE_SERVICE_ROLE_KEY=SUPABASE_SERVICE_ROLE_KEY:latest,GEMINI_API_KEY=GEMINI_API_KEY:latest,VOICE_SESSION_SECRET=VOICE_SESSION_SECRET:latest"
+
+      - name: Verify Cloud Run deployment
+        run: |
+          gcloud run services describe ayabot-backend \
+            --project=ayabot-production \
+            --region=asia-southeast1 \
+            --format="yaml(status.latestReadyRevisionName,status.traffic)"
