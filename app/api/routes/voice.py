@@ -121,7 +121,9 @@ async def voice_websocket(websocket: WebSocket):
                     timeout=settings.voice_auth_timeout_seconds,
                 )
             )
-        except VoiceMessageValidationError:
+        except (asyncio.TimeoutError, WebSocketDisconnect):
+            raise
+        except (VoiceMessageValidationError, ValueError, TypeError):
             await websocket.close(
                 code=1008,
                 reason="Invalid authentication message",

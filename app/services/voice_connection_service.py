@@ -228,11 +228,15 @@ def _decode_audio(encoded_audio: str, limits: VoiceRuntimeLimits) -> bytes:
             close_code=1008,
         ) from exc
 
-    if (
-        not audio_bytes
-        or len(audio_bytes) > limits.max_audio_bytes
-        or len(audio_bytes) % 2
-    ):
+    if len(audio_bytes) > limits.max_audio_bytes:
+        raise VoiceConnectionError(
+            code="message_too_large",
+            message="Audio message is too large.",
+            recoverable=False,
+            close_code=1009,
+        )
+
+    if not audio_bytes or len(audio_bytes) % 2:
         raise VoiceConnectionError(
             code="invalid_message",
             message="Audio message is invalid.",
