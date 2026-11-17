@@ -61,6 +61,17 @@ def consume_voice_session_ticket(
     db: Session,
     raw_ticket: str,
 ) -> AyabotVoiceSessionTicket:
+    settings = get_settings()
+
+    if (
+        not raw_ticket
+        or len(raw_ticket) > settings.voice_max_ticket_chars
+    ):
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Invalid voice ticket",
+        )
+
     token_hash = hashlib.sha256(
         raw_ticket.encode("utf-8")
     ).hexdigest()
